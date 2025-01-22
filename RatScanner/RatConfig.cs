@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json.Linq;
+﻿﻿using Newtonsoft.Json.Linq;
 using RatScanner.TarkovDev.GraphQL;
 using RatStash;
 using System;
@@ -103,6 +103,12 @@ internal static class RatConfig {
 	}
 
 	// Overlay options
+	// Network options
+	internal static class Network {
+		internal static string ServerIP = "0.0.0.0";
+		internal static int ServerPort = 13337;
+	}
+
 	internal static class Overlay {
 		internal static class Search {
 			internal static bool Enable = true;
@@ -198,6 +204,10 @@ internal static class RatConfig {
 		Tracking.TarkovTracker.Token = config.ReadString(nameof(Tracking.TarkovTracker.Token), Tracking.TarkovTracker.Token);
 		Tracking.TarkovTracker.ShowTeam = config.ReadBool(nameof(Tracking.TarkovTracker.ShowTeam), Tracking.TarkovTracker.ShowTeam);
 
+		config.Section = nameof(Network);
+		Network.ServerIP = config.ReadString(nameof(Network.ServerIP), Network.ServerIP);
+		Network.ServerPort = config.ReadInt(nameof(Network.ServerPort), Network.ServerPort);
+
 		config.Section = nameof(Overlay);
 
 		config.Section = nameof(Overlay.Search);
@@ -256,6 +266,10 @@ internal static class RatConfig {
 		config.Section = nameof(Tracking.TarkovTracker);
 		config.WriteString(nameof(Tracking.TarkovTracker.Token), Tracking.TarkovTracker.Token);
 		config.WriteBool(nameof(Tracking.TarkovTracker.ShowTeam), Tracking.TarkovTracker.ShowTeam);
+
+		config.Section = nameof(Network);
+		config.WriteString(nameof(Network.ServerIP), Network.ServerIP);
+		config.WriteInt(nameof(Network.ServerPort), Network.ServerPort);
 
 		config.Section = nameof(Overlay);
 

@@ -1,0 +1,146 @@
+@page "/app/settings/networking"
+@layout SettingsLayout
+@using RatScanner.View
+@inject RatScannerMain RatScannerMain
+@inject SettingsVM SettingsVM
+
+<div>
+    <MudGrid Class="pa-0 ma-0" Spacing="0" Style="height: 100%;">
+        <MudItem xs="12">
+            <div class="d-flex align-center justify-center mx-2 mb-1">
+                <MudText Typo="Typo.subtitle1" Color="Color.Inherit">Networking Settings</MudText>
+            </div>
+        </MudItem>
+        <MudItem xs="12">
+            <MudPaper Class="align-center justify-center pa-2 mx-2 mb-2" Elevation="2">
+                <MudText Style="margin-bottom: 4px">Network Settings</MudText>
+                <MudTextField @bind-Value="@ServerIP" Label="Server IP Address (for connecting to server)" Class="mt-2" />
+                <MudNumericField @bind-Value="@ServerPort" Label="Server Port" Class="mt-2" Min="1" Max="65535" />
+                <MudButton Color="Color.Primary" OnClick="SaveNetworkSettings" Class="mt-2">Save Settings</MudButton>
+            </MudPaper>
+
+            <MudPaper Class="align-center justify-center pa-2 mx-2 mb-2" Elevation="2">
+                <MudText Style="margin-bottom: 4px">URL Sharing</MudText>
+                <div class="d-flex align-center justify-center flex-wrap">
+                    @if (!RatScannerMain.NetworkManager.IsServer && !RatScannerMain.NetworkManager.IsConnected)
+                    {
+                        <MudButton Color="Color.Primary" OnClick="StartServer" Class="mt-2 mx-1">
+                            Start Server
+                        </MudButton>
+                        <MudButton Color="Color.Primary" OnClick="ConnectToServer" Class="mt-2 mx-1">
+                            Connect to Server
+                        </MudButton>
+                    }
+                    @if (RatScannerMain.NetworkManager.IsServer)
+                    {
+                        <MudButton Color="Color.Primary" Disabled="true" Class="mt-2 mx-1">
+                            Server Running
+                        </MudButton>
+                    }
+                    @if (RatScannerMain.NetworkManager.IsConnected && !RatScannerMain.NetworkManager.IsServer)
+                    {
+                        <MudButton Color="Color.Primary" Disabled="true" Class="mt-2 mx-1">
+                            Connected to Server
+                        </MudButton>
+                    }
+                    @if (RatScannerMain.NetworkManager.IsConnected || RatScannerMain.NetworkManager.IsServer)
+                    {
+                        <MudButton Color="Color.Error" OnClick="Disconnect" Class="mt-2 mx-1">
+                            Disconnect
+                        </MudButton>
+                    }
+                </div>
+                @if (errorMessage != null)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-2">@errorMessage</MudAlert>
+                }
+                @if (RatScannerMain.NetworkManager.IsServer)
+                {
+                    <MudAlert Severity="@(RatScannerMain.NetworkManager.IsConnected ? Severity.Success : Severity.Info)" Class="mt-2">
+                        @if (RatScannerMain.NetworkManager.IsConnected)
+                        {
+                            <text>Client connected - URLs will be shared with connected client</text>
+                        }
+                        else
+                        {
+                            <text>Running as server - Waiting for client connection</text>
+                        }
+                    </MudAlert>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+@code {
+    private string? errorMessage;
+    private string ServerIP
+    {
+        get => RatConfig.Network.ServerIP;
+        set => RatConfig.Network.ServerIP = value;
+    }
+
+    private int ServerPort
+    {
+        get => RatConfig.Network.ServerPort;
+        set => RatConfig.Network.ServerPort = value;
+    }
+
+    private async Task SaveNetworkSettings()
+    {
+        errorMessage = null;
+        RatConfig.SaveConfig();
+        
+        // If we're connected, we need to reconnect with new settings
+        if (RatScannerMain.NetworkManager.IsConnected)
+        {
+            try 
+            {
+                await RatScannerMain.ConnectToNetworkServer();
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Failed to reconnect with new settings: {ex.Message}";
+            }
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task StartServer()
+    {
+        try
+        {
+            errorMessage = null;
+            await RatScannerMain.StartNetworkServer();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to start server: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConnectToServer()
+    {
+        try
+        {
+            errorMessage = null;
+            await RatScannerMain.ConnectToNetworkServer();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to connect: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void Disconnect()
+    {
+        errorMessage = null;
+        RatScannerMain.NetworkManager.Cleanup();
+        StateHasChanged();
+    }
+}

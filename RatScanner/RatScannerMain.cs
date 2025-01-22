@@ -1,4 +1,4 @@
-﻿using RatEye;
+﻿﻿﻿﻿using RatEye;
 using RatScanner.Scan;
 using RatStash;
 using System;
@@ -16,6 +16,8 @@ using MessageBox = System.Windows.MessageBox;
 using PixelFormat = System.Drawing.Imaging.PixelFormat;
 using Size = System.Drawing.Size;
 using Timer = System.Threading.Timer;
+using Task = System.Threading.Tasks.Task;
+using TarkovDev = RatScanner.TarkovDev;
 
 namespace RatScanner;
 
@@ -24,6 +26,7 @@ public class RatScannerMain : INotifyPropertyChanged {
 	internal static RatScannerMain Instance => _instance ??= new RatScannerMain();
 
 	internal readonly HotkeyManager HotkeyManager;
+	internal readonly NetworkManager NetworkManager;
 
 	private Timer? _marketDBRefreshTimer;
 	private Timer? _tarkovTrackerDBRefreshTimer;
@@ -74,6 +77,9 @@ public class RatScannerMain : INotifyPropertyChanged {
 		HotkeyManager = new HotkeyManager();
 		HotkeyManager.UnregisterHotkeys();
 
+		Logger.LogInfo("Initializing network manager...");
+		NetworkManager = new NetworkManager();
+		
 		Logger.LogInfo("UI Ready!");
 
 		Logger.LogInfo("Initializing RatEye...");
@@ -321,5 +327,46 @@ public class RatScannerMain : INotifyPropertyChanged {
 
 	protected virtual void OnPropertyChanged(string propertyName = null) {
 		PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+	}
+
+	public async Task StartNetworkServer()
+	{
+		try
+		{
+			await NetworkManager.StartServer();
+			Logger.LogInfo("Network server started successfully");
+		}
+		catch (Exception ex)
+		{
+			Logger.LogError("Failed to start network server", ex);
+			throw;
+		}
+	}
+
+	public async Task ConnectToNetworkServer()
+	{
+		try
+		{
+			await NetworkManager.ConnectToServer();
+			Logger.LogInfo("Connected to network server successfully");
+		}
+		catch (Exception ex)
+		{
+			Logger.LogError("Failed to connect to network server", ex);
+			throw;
+		}
+	}
+
+	public async Task BroadcastURL(string url)
+	{
+		try
+		{
+			await NetworkManager.BroadcastURL(url);
+		}
+		catch (Exception ex)
+		{
+			Logger.LogError("Failed to broadcast URL", ex);
+			throw;
+		}
 	}
 }

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Web.WebView2.Core;
 using MudBlazor.Services;
 using RatScanner.ViewModel;
@@ -42,6 +42,7 @@ public partial class BlazorUI : UserControl, ISwitchable {
 		serviceCollection.AddSingleton<VirtualScreenOffset>(s => new VirtualScreenOffset(left, top));
 
 		serviceCollection.AddSingleton<TarkovTrackerDB>(s => RatScannerMain.Instance.TarkovTrackerDB);
+		serviceCollection.AddSingleton<RatScannerMain>(s => RatScannerMain.Instance);
 
 		ServiceProvider serviceProvider = serviceCollection.BuildServiceProvider();
 

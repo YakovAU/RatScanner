@@ -11,10 +11,33 @@
 @inject RatScanner.VirtualScreenOffset VirtualScreenOffset
 @inject SettingsVM SettingsVM;
 @inject IJSRuntime JSRuntime;
+@inject RatScannerMain RatScannerMain;
 @implements IDisposable
 
 <div id="click-away-background" style="position: absolute; width: 100%; height: 100%;"
      onmousedown="if (event.target == this) DotNet.invokeMethodAsync('RatScanner', 'JSHideOverlay')"></div>
+
+<div style="position: absolute; top: 10px; right: 10px;">
+    @if (!RatScannerMain.NetworkManager.IsServer)
+    {
+        <MudButton Color="Color.Primary" OnClick="ConnectToServer" Disabled="@RatScannerMain.NetworkManager.IsConnected">
+            @if (RatScannerMain.NetworkManager.IsConnected)
+            {
+                <span>Connected</span>
+            }
+            else
+            {
+                <span>Connect</span>
+            }
+        </MudButton>
+    }
+    else
+    {
+        <MudChip Color="@(RatScannerMain.NetworkManager.IsConnected ? Color.Success : Color.Default)" Size="Size.Small">
+            @(RatScannerMain.NetworkManager.IsConnected ? "Client Connected" : "Waiting for Client")
+        </MudChip>
+    }
+</div>
 <div style="width: 100%; height: 100%;">
     <!--Disable pointer events to make clicks on layout divs passthorugh to the "click-away-background"-->
     <div style="position: relative; top: 20%; pointer-events: none;">
@@ -64,6 +87,7 @@
                                                 @item.ShortName
                                                 <MudIconButton Icon="@Constants.Icon.TarkovDev" Size="Size.Small" OnClick=@(() => OpenURL($"https://tarkov.dev/item/{item.Id}")) />
                                                 <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" OnClick=@(() => OpenURL(item.WikiLink)) />
+                                                <MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick=@(() => ShareURL(item.WikiLink)) />
                                             </MudText>
                                         </MudStack>
                                     </MudStack>
@@ -156,6 +180,7 @@
                                             <MudText Align="Align.Center">
                                                 <MudIconButton Icon="@Constants.Icon.TarkovDev" Size="Size.Small" OnClick=@(() => OpenURL($"https://tarkov.dev/task/{task.Id}")) />
                                                 <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" OnClick=@(() => OpenURL(task.WikiLink)) />
+                                                <MudIconButton Icon="@Icons.Material.Filled.Share" Size="Size.Small" OnClick=@(() => ShareURL(task.WikiLink)) />
                                             </MudText>
                                         </MudStack>
                                     </MudStack>
@@ -348,5 +373,53 @@
                 UseShellExecute = true,
             };
         Process.Start(psi);
+    }
+
+    private async Task ShareURL(string? url) {
+        if (string.IsNullOrEmpty(url)) return;
+        
+        if (RatScannerMain.NetworkManager.IsServer && RatScannerMain.NetworkManager.IsConnected)
+        {
+            await RatScannerMain.BroadcastURL(url);
+        }
+        else
+        {
+            // Fallback to opening URL locally if not in server mode or no clients connected
+            var psi = new ProcessStartInfo {
+                FileName = url,
+                UseShellExecute = true
+            };
+            Process.Start(psi);
+        }
+    }
+
+    private async Task ConnectToServer()
+    {
+        try
+        {
+            await RatScannerMain.ConnectToNetworkServer();
+            StateHasChanged();
+        }
+        catch
+        {
+            // Error is already logged in RatScannerMain
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // First instance starts as server
+            if (!Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName)
+                .Any(p => p.Id != Process.GetCurrentProcess().Id))
+            {
+                await RatScannerMain.StartNetworkServer();
+            }
+        }
+        catch
+        {
+            // Error is already logged in RatScannerMain
+        }
     }
 }

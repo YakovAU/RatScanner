@@ -22,9 +22,9 @@ internal class MenuVM : INotifyPropertyChanged {
 
 	public ItemQueue ItemScans => DataSource.ItemScans;
 
-	public ItemScan LastItemScan => ItemScans.LastOrDefault() ?? throw new Exception("ItemQueue is empty!");
+	public ItemScan? LastItemScan => ItemScans.LastOrDefault();
 
-	public Item LastItem => LastItemScan.Item;
+	public Item? LastItem => LastItemScan?.Item;
 
 	public string DiscordLink => ApiManager.GetResource(ApiManager.ResourceType.DiscordLink);
 
@@ -32,26 +32,29 @@ internal class MenuVM : INotifyPropertyChanged {
 
 	public string PatreonLink => ApiManager.GetResource(ApiManager.ResourceType.PatreonLink);
 
-	public string Updated => DateTime.Parse(LastItem.Updated).ToLocalTime().ToString(CultureInfo.CurrentCulture);
+	public string Updated => LastItem?.Updated != null
+		? DateTime.Parse(LastItem.Updated).ToLocalTime().ToString(CultureInfo.CurrentCulture)
+		: string.Empty;
 
 	public string WikiLink {
 		get {
+			if (LastItem == null) return string.Empty;
 			string? link = LastItem.WikiLink;
 			if (link?.Length > 3) return link;
 			return $"https://escapefromtarkov.gamepedia.com/{HttpUtility.UrlEncode(LastItem.Name.Replace(" ", "_"))}";
 		}
 	}
 
-	public int PricePerSlot => LastItem.GetAvg24hMarketPricePerSlot();
+	public int PricePerSlot => LastItem?.GetAvg24hMarketPricePerSlot() ?? 0;
 
-	public ItemPrice? BestTraderOffer => LastItem.GetBestTraderOffer();
-	public TraderOffer? BestTraderOfferVendor => LastItem.GetBestTraderOfferVendor();
+	public ItemPrice? BestTraderOffer => LastItem?.GetBestTraderOffer();
+	public TraderOffer? BestTraderOfferVendor => LastItem?.GetBestTraderOfferVendor();
 
-	public int TaskRemaining => LastItem.GetTaskRemaining();
+	public int TaskRemaining => LastItem?.GetTaskRemaining() ?? 0;
 
-	public int HideoutRemaining => LastItem.GetHideoutRemaining();
+	public int HideoutRemaining => LastItem?.GetHideoutRemaining() ?? 0;
 
-	public bool ItemNeeded => TaskRemaining + HideoutRemaining > 0;
+	public bool ItemNeeded => LastItem != null && (TaskRemaining + HideoutRemaining > 0);
 
 	public List<KeyValuePair<string, KeyValuePair<int, int>>>? ItemTeamNeeds {
 		get {
@@ -61,6 +64,7 @@ internal class MenuVM : INotifyPropertyChanged {
 
 			List<KeyValuePair<string, KeyValuePair<int, int>>> needs = new();
 			foreach (FetchModels.TarkovTracker.UserProgress? memberProgress in teamProgress) {
+				if (LastItem == null) continue;
 				int task = LastItem.GetTaskRemaining(memberProgress);
 				int hideout = LastItem.GetHideoutRemaining(memberProgress);
 

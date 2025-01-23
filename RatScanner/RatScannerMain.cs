@@ -1,4 +1,4 @@
-﻿﻿﻿﻿using RatEye;
+﻿using RatEye;
 using RatScanner.Scan;
 using RatStash;
 using System;
@@ -17,11 +17,12 @@ using PixelFormat = System.Drawing.Imaging.PixelFormat;
 using Size = System.Drawing.Size;
 using Timer = System.Threading.Timer;
 using Task = System.Threading.Tasks.Task;
+using TaskCanceledException = System.Threading.Tasks.TaskCanceledException;
 using TarkovDev = RatScanner.TarkovDev;
 
 namespace RatScanner;
 
-public class RatScannerMain : INotifyPropertyChanged {
+public class RatScannerMain : INotifyPropertyChanged, IDisposable {
 	private static RatScannerMain _instance = null!;
 	internal static RatScannerMain Instance => _instance ??= new RatScannerMain();
 
@@ -56,6 +57,9 @@ public class RatScannerMain : INotifyPropertyChanged {
 
 	internal ItemQueue ItemScans = new();
 
+	private readonly CancellationTokenSource _shutdownTokenSource = new();
+	private bool _isInitialized;
+
 	public RatScannerMain() {
 		_instance = this;
 
@@ -65,51 +69,116 @@ public class RatScannerMain : INotifyPropertyChanged {
 		Logger.LogInfo("----- RatScanner " + RatConfig.Version + " -----");
 		Logger.LogInfo($"Screen Info: {RatConfig.ScreenWidth}x{RatConfig.ScreenHeight} at {RatConfig.ScreenScale * 100}%");
 
-		Logger.LogInfo("Initializing TarkovDev API...");
-		TarkovDevAPI.InitializeCache().Wait();
-
-		ItemScans.Enqueue(new DefaultItemScan(TarkovDevAPI.GetItems()[new Random().Next(TarkovDevAPI.GetItems().Length)]));
-
-		Logger.LogInfo("Initializing tarkov tracker database");
-		TarkovTrackerDB = new TarkovTrackerDB();
-
+		// Initialize basic services that don't require heavy I/O
 		Logger.LogInfo("Initializing hotkey manager...");
 		HotkeyManager = new HotkeyManager();
 		HotkeyManager.UnregisterHotkeys();
 
 		Logger.LogInfo("Initializing network manager...");
 		NetworkManager = new NetworkManager();
-		
-		Logger.LogInfo("UI Ready!");
 
 		Logger.LogInfo("Initializing RatEye...");
 		SetupRatEye();
 
-		new Thread(() => {
-			Thread.Sleep(1000);
-			Logger.LogInfo("Checking for updates...");
-			CheckForUpdates();
+		// Start async initialization
+		_ = InitializeAsync();
+	}
 
-			Logger.LogInfo("Loading TarkovTracker data...");
-			if (RatConfig.Tracking.TarkovTracker.Enable) {
-				TarkovTrackerDB.Token = RatConfig.Tracking.TarkovTracker.Token;
-				Logger.LogInfo("Loading TarkovTracker...");
-				if (!TarkovTrackerDB.Init()) {
-					Logger.ShowWarning("TarkovTracker API Token invalid!\n\nPlease provide a new token.");
-					RatConfig.Tracking.TarkovTracker.Token = "";
-					RatConfig.SaveConfig();
-				}
+	private async Task InitializeAsync()
+	{
+		try
+		{
+			Logger.LogInfo("Initializing TarkovDev API...");
+			await TarkovDevAPI.InitializeCache();
+
+			// Initialize TarkovTracker DB
+			Logger.LogInfo("Initializing tarkov tracker database");
+			TarkovTrackerDB = new TarkovTrackerDB();
+
+			// Initialize API and ensure we have items
+			var items = TarkovDevAPI.GetItems();
+			if (items.Length == 0)
+			{
+				Logger.LogError("No items available from TarkovDev API");
+				return;
 			}
 
-			Logger.LogInfo("Setting up timer routines...");
-			_tarkovTrackerDBRefreshTimer = new Timer(RefreshTarkovTrackerDB, null, RatConfig.Tracking.TarkovTracker.RefreshTime, Timeout.Infinite);
-			_scanRefreshTimer = new Timer(RefreshOverlay, null, 1000, 100);
+			// Queue initial default item
+			ItemScans.Enqueue(new DefaultItemScan(items[new Random().Next(items.Length)]));
 
-			Logger.LogInfo("Enabling hotkeys...");
-			HotkeyManager.RegisterHotkeys();
+			await Task.Run(async () => {
+				try
+				{
+					Logger.LogInfo("Checking for updates...");
+					CheckForUpdates();
 
-			Logger.LogInfo("Ready!");
-		}).Start();
+					if (RatConfig.Tracking.TarkovTracker.Enable)
+					{
+						Logger.LogInfo("Loading TarkovTracker data...");
+						TarkovTrackerDB.Token = RatConfig.Tracking.TarkovTracker.Token;
+						if (!TarkovTrackerDB.Init())
+						{
+							Logger.ShowWarning("TarkovTracker API Token invalid!\n\nPlease provide a new token.");
+							RatConfig.Tracking.TarkovTracker.Token = "";
+							RatConfig.SaveConfig();
+						}
+					}
+
+					Logger.LogInfo("Setting up timer routines...");
+					_tarkovTrackerDBRefreshTimer = new Timer(RefreshTarkovTrackerDB, null, RatConfig.Tracking.TarkovTracker.RefreshTime, Timeout.Infinite);
+					_scanRefreshTimer = new Timer(RefreshOverlay, null, 1000, 100);
+
+					Logger.LogInfo("Enabling hotkeys...");
+					HotkeyManager.RegisterHotkeys();
+
+					// Only mark as initialized if we have a default item
+					if (ItemScans.LastOrDefault() != null)
+					{
+						_isInitialized = true;
+						Logger.LogInfo("Ready!");
+					}
+					else
+					{
+						Logger.LogError("Failed to initialize default item");
+					}
+				}
+				catch (Exception ex)
+				{
+					Logger.LogError("Error during async initialization", ex);
+				}
+			});
+		}
+		catch (Exception ex)
+		{
+			Logger.LogError("Critical error during initialization", ex);
+			throw;
+		}
+	}
+
+	public void Dispose()
+	{
+		try
+		{
+			_shutdownTokenSource.Cancel();
+
+			// Cleanup timers
+			_marketDBRefreshTimer?.Dispose();
+			_tarkovTrackerDBRefreshTimer?.Dispose();
+			_scanRefreshTimer?.Dispose();
+
+			// Unregister hotkeys
+			if (HotkeyManager != null)
+			{
+				HotkeyManager.UnregisterHotkeys();
+			}
+
+			// Cleanup other resources
+			_shutdownTokenSource.Dispose();
+		}
+		catch (Exception ex)
+		{
+			Logger.LogError("Error during cleanup", ex);
+		}
 	}
 
 	private void CheckForUpdates() {
@@ -198,13 +267,16 @@ public class RatScannerMain : INotifyPropertyChanged {
 	/// Perform a name scan at the give position
 	/// </summary>
 	/// <param name="position">Position on the screen at which to perform the scan</param>
-	internal void NameScan(Vector2 position) {
-		lock (NameScanLock) {
-			Logger.LogDebug("Name scanning at: " + position);
-			// Wait for game ui to update the click
-			Thread.Sleep(50);
+	internal async Task NameScan(Vector2 position) {
+		if (_shutdownTokenSource.Token.IsCancellationRequested) return;
 
-			// Get raw screenshot which includes the icon and text
+		await Task.Run(() => {
+			lock (NameScanLock) {
+				Logger.LogDebug("Name scanning at: " + position);
+				// Use a shorter delay and make it async
+				Task.Delay(25).Wait();
+
+				// Get raw screenshot which includes the icon and text
 			int markerScanSize = RatConfig.NameScan.MarkerScanSize;
 			int sizeWidth = markerScanSize + RatConfig.NameScan.TextWidth;
 			int sizeHeight = markerScanSize;
@@ -231,15 +303,19 @@ public class RatScannerMain : INotifyPropertyChanged {
 
 			ItemScans.Enqueue(tempNameScan);
 
-			RefreshOverlay();
-		}
+				RefreshOverlay();
+			}
+		});
 	}
 
 	/// <summary>
 	/// Perform a name scan over the entire active screen
 	/// </summary>
-	internal void NameScanScreen(object? _ = null) {
-		lock (NameScanLock) {
+	internal async Task NameScanScreen(object? _ = null) {
+		if (_shutdownTokenSource.Token.IsCancellationRequested) return;
+
+		await Task.Run(() => {
+			lock (NameScanLock) {
 			Logger.LogDebug("Name scanning screen");
 			Vector2 mousePosition = UserActivityHelper.GetMousePosition();
 			Rectangle bounds = Screen.AllScreens.First(screen => screen.Bounds.Contains(mousePosition)).Bounds;
@@ -266,8 +342,9 @@ public class RatScannerMain : INotifyPropertyChanged {
 
 				ItemScans.Enqueue(tempNameScan);
 			}
-			RefreshOverlay();
-		}
+				RefreshOverlay();
+			}
+		});
 	}
 
 	/// <summary>
@@ -275,8 +352,11 @@ public class RatScannerMain : INotifyPropertyChanged {
 	/// </summary>
 	/// <param name="position">Position on the screen at which to perform the scan</param>
 	/// <returns><see langword="true"/> if a item was scanned successfully</returns>
-	internal void IconScan(Vector2 position) {
-		lock (IconScanLock) {
+	internal async Task IconScan(Vector2 position) {
+		if (_shutdownTokenSource.Token.IsCancellationRequested) return;
+
+		await Task.Run(() => {
+			lock (IconScanLock) {
 			Logger.LogDebug("Icon scanning at: " + position);
 			int x = position.X - RatConfig.IconScan.ScanWidth / 2;
 			int y = position.Y - RatConfig.IconScan.ScanHeight / 2;
@@ -298,8 +378,9 @@ public class RatScannerMain : INotifyPropertyChanged {
 			ItemIconScan tempIconScan = new(icon, toolTipPosition, RatConfig.ToolTip.Duration);
 
 			ItemScans.Enqueue(tempIconScan);
-			RefreshOverlay();
-		}
+				RefreshOverlay();
+			}
+		});
 	}
 
 	// Returns the ruff screenshot
@@ -326,7 +407,17 @@ public class RatScannerMain : INotifyPropertyChanged {
 	}
 
 	protected virtual void OnPropertyChanged(string propertyName = null) {
-		PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+		if (_isInitialized && !_shutdownTokenSource.Token.IsCancellationRequested)
+		{
+			try
+			{
+				PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+			}
+			catch (TaskCanceledException)
+			{
+				// Ignore task cancellation during shutdown
+			}
+		}
 	}
 
 	public async Task StartNetworkServer()

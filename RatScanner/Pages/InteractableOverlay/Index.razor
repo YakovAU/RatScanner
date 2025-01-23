@@ -348,11 +348,21 @@
         MenuVM.PropertyChanged += PropertyChangeHandler;
     }
 
+    private bool _isDisposed;
+
     private async void PropertyChangeHandler(object? sender, EventArgs e) {
-        await InvokeAsync(() => StateHasChanged());
+        try {
+            if (!_isDisposed) {
+                await InvokeAsync(() => StateHasChanged());
+            }
+        }
+        catch (TaskCanceledException) {
+            // Ignore task cancellation during shutdown
+        }
     }
 
     public void Dispose() {
+        _isDisposed = true;
         MenuVM.PropertyChanged -= PropertyChangeHandler;
     }
 
@@ -377,7 +387,7 @@
 
     private async Task ShareURL(string? url) {
         if (string.IsNullOrEmpty(url)) return;
-        
+
         if (RatScannerMain.NetworkManager.IsServer && RatScannerMain.NetworkManager.IsConnected)
         {
             await RatScannerMain.BroadcastURL(url);

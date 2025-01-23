@@ -9,10 +9,19 @@
 <MudGrid Class="pa-0" Spacing="0">
     <MudGrid Class="pa-0" Spacing="0">
         <MudItem xs="12">
-            <div class="d-flex align-center justify-start mx-2 mt-2 mb-1">
-                <img src="@MenuVM.LastItem.IconLink" class="mr-2 mud-elevation-1" style="border-style: solid; border-width: 1px; border-color: #585D60; display: block; max-width: 64px; max-height: 64px; width: auto; height: auto;" />
-                <MudText Class="ellipsis" Style="display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;" Color="Color.Inherit">@MenuVM.LastItem.Name</MudText>
-            </div>
+            @if (MenuVM.LastItem != null)
+            {
+                <div class="d-flex align-center justify-start mx-2 mt-2 mb-1">
+                    <img src="@MenuVM.LastItem.IconLink" class="mr-2 mud-elevation-1" style="border-style: solid; border-width: 1px; border-color: #585D60; display: block; max-width: 64px; max-height: 64px; width: auto; height: auto;" />
+                    <MudText Class="ellipsis" Style="display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;" Color="Color.Inherit">@MenuVM.LastItem.Name</MudText>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex align-center justify-start mx-2 mt-2 mb-1">
+                    <MudText>Loading...</MudText>
+                </div>
+            }
         </MudItem>
         <MudItem xs="6">
             <MudPaper Class="d-flex align-center justify-center pa-1 ml-2 mr-1 my-1 mud-grey-darken4" Elevation="2" @onclick="OpenWiki" Style="cursor: pointer;" MinHeight="32px">
@@ -28,11 +37,11 @@
             <MudPaper Class="align-center justify-center pa-2 mx-2 my-1" Elevation="2">
                 <div class="d-flex justify-space-between align-center mt-2">
                     <MudText Typo="Typo.subtitle2">Recent Avg. Price</MudText>
-                    <MudText Typo="Typo.subtitle2">@MenuVM.LastItem.Avg24HPrice.AsRubs()</MudText>
+                    <MudText Typo="Typo.subtitle2">@(MenuVM.LastItem?.Avg24HPrice.AsRubs() ?? "0 ₽")</MudText>
                 </div>
                 <div class="d-flex justify-space-between align-center my-1">
                     <MudText Typo="Typo.subtitle2">Value per Slot</MudText>
-                    <MudText Typo="Typo.subtitle2">@MenuVM.PricePerSlot.AsRubs()</MudText>
+                    <MudText Typo="Typo.subtitle2">@(MenuVM.LastItem != null ? MenuVM.PricePerSlot.AsRubs() : "0 ₽")</MudText>
                 </div>
                 <MudDivider DividerType="DividerType.FullWidth" />
                 <div class="d-flex justify-space-between align-center mt-2">
@@ -48,16 +57,19 @@
                 </div>
             </MudPaper>
         </MudItem>
-        <MudItem xs="12">
-            <MudPaper Class="d-flex align-center justify-space-around pa-1 mx-2 my-1" Elevation="2">
-                <div class="d-flex align-center">
-                    @MenuVM.TaskRemaining <MudIcon Icon="@Icons.Material.Filled.Checklist" Size="Size.Small" Class="ml-1" /> Quest
-                </div>
-                <div class="d-flex align-center">
-                    @MenuVM.HideoutRemaining <MudIcon Icon="@Icons.Material.Filled.House" Size="Size.Small" Class="ml-1" /> Hideout
-                </div>
-            </MudPaper>
-        </MudItem>
+        @if (MenuVM.LastItem != null)
+        {
+            <MudItem xs="12">
+                <MudPaper Class="d-flex align-center justify-space-around pa-1 mx-2 my-1" Elevation="2">
+                    <div class="d-flex align-center">
+                        @MenuVM.TaskRemaining <MudIcon Icon="@Icons.Material.Filled.Checklist" Size="Size.Small" Class="ml-1" /> Quest
+                    </div>
+                    <div class="d-flex align-center">
+                        @MenuVM.HideoutRemaining <MudIcon Icon="@Icons.Material.Filled.House" Size="Size.Small" Class="ml-1" /> Hideout
+                    </div>
+                </MudPaper>
+            </MudItem>
+        }
         @if (MenuVM.ItemTeamNeeds != null && MenuVM.ItemTeamNeeds.Any()) {
             <MudItem xs="12">
                 <MudPaper Class="d-flex align-center justify-space-around pa-1 mx-2 my-1" Elevation="2">
@@ -114,90 +126,115 @@
         MenuVM.PropertyChanged += PropertyChangeHandler;
     }
 
-    private async Task<IEnumerable<TarkovDev.GraphQL.Item>> SearchItem(string value) {
-        if (_items == null) _items = TarkovDevAPI.GetItems().ToList();
+    private async Task<IEnumerable<TarkovDev.GraphQL.Item>> SearchItem(string value)
+    {
+        try
+        {
+            if (_items == null) _items = TarkovDevAPI.GetItems().ToList();
 
-        if (string.IsNullOrEmpty(value)) return TarkovDevAPI.GetItems().Take(1);
+            if (string.IsNullOrEmpty(value)) return _items.Take(1);
 
-        value = SanitizeSearch(value);
+            value = SanitizeSearch(value);
 
-        Func<TarkovDev.GraphQL.Item, (TarkovDev.GraphQL.Item item, int score)> filter = (item) => {
-            if (SanitizeSearch(item.Name) == value) return new(item, 5);
-            if (SanitizeSearch(item.ShortName) == value) return new(item, 10);
+            Func<TarkovDev.GraphQL.Item, (TarkovDev.GraphQL.Item item, int score)> filter = (item) =>
+            {
+                if (SanitizeSearch(item.Name) == value) return new(item, 5);
+                if (SanitizeSearch(item.ShortName) == value) return new(item, 10);
 
-            if (SanitizeSearch(item.Name).StartsWith(value)) return new(item, 20);
-            if (SanitizeSearch(item.ShortName).StartsWith(value)) return new(item, 20);
+                if (SanitizeSearch(item.Name).StartsWith(value)) return new(item, 20);
+                if (SanitizeSearch(item.ShortName).StartsWith(value)) return new(item, 20);
 
-            // Match every individual word (expensive)
-            string[] filters = value.Split(new[] { ' ' });
-            if (filters.All(filter => SanitizeSearch(item.Name).Contains(filter))) return new(item, 40);
-            if (filters.All(filter => SanitizeSearch(item.ShortName).Contains(filter))) return new(item, 40);
+                // Match every individual word (expensive)
+                string[] filters = value.Split(new[] { ' ' });
+                if (filters.All(filter => SanitizeSearch(item.Name).Contains(filter))) return new(item, 40);
+                if (filters.All(filter => SanitizeSearch(item.ShortName).Contains(filter))) return new(item, 40);
 
-            if (SanitizeSearch(item.Name).Contains(value)) return new(item, 60);
-            if (SanitizeSearch(item.ShortName).Contains(value)) return new(item, 60);
+                if (SanitizeSearch(item.Name).Contains(value)) return new(item, 60);
+                if (SanitizeSearch(item.ShortName).Contains(value)) return new(item, 60);
 
-            if (value.Length > 3 && SanitizeSearch(item.Id).StartsWith(value)) return new(item, 80);
-            if (value.Length > 3 && SanitizeSearch(item.Id).Contains(value)) return new(item, 100);
-            return new(null, -1);
-        };
-
-        var matches = new List<(TarkovDev.GraphQL.Item item, int score)>();
-        foreach (var item in _items) {
-            var match = filter(item);
-            if (match.item == null) continue;
-            matches.Add(match);
-        }
-
-        for (var i = 0; i < matches.Count; i++) {
-            // Slightly penalize items with long names
-            matches[i] = (matches[i].item, (int)(matches[i].score + matches[i].item.Name.Length * 0.002f));
-
-            // Penalize weapon mods so the weapon it self will rank higher
-            if (matches[i].item.Types.Contains(ItemType.Mods)) matches[i] = (matches[i].item, matches[i].score + 5);
-        }
-
-
-        for (var i = 0; i < matches.Count; i++) if (matches[i].item.Types.Contains(ItemType.Mods)) matches[i] = (matches[i].item, matches[i].score + 5);
-
-        var sortedMatches = matches.OrderBy(match => match.score).ThenBy(match => match.item.Name.Length);
-        return sortedMatches.Select(match => match.item);
-    }
-
-    private string SanitizeSearch(string value) {
-        value = value.ToLower().Trim();
-        value = new string(value.Where(c => char.IsLetterOrDigit(c) || c == ' ').ToArray());
-        return value;
-    }
-
-    private async void SetSearchItem(TarkovDev.GraphQL.Item item) {
-        if (item == null) return;
-        MenuVM.ItemScans.Enqueue(new DefaultItemScan(item));
-        await _searchBox.Clear();
-    }
-
-    private async void OpenWiki() {
-        OpenURL(MenuVM.LastItem.WikiLink);
-    }
-
-    private async void OpenTarkovDev() {
-        OpenURL(MenuVM.LastItem.Link);
-    }
-
-    private void OpenURL(string url) {
-        if (string.IsNullOrEmpty(url)) return;
-        var psi = new ProcessStartInfo {
-                FileName = url,
-                UseShellExecute = true,
+                if (value.Length > 3 && SanitizeSearch(item.Id).StartsWith(value)) return new(item, 80);
+                if (value.Length > 3 && SanitizeSearch(item.Id).Contains(value)) return new(item, 100);
+                return new(null, -1);
             };
-        Process.Start(psi);
+
+            var matches = new List<(TarkovDev.GraphQL.Item item, int score)>();
+            foreach (var item in _items)
+            {
+                var match = filter(item);
+                if (match.item == null) continue;
+                matches.Add(match);
+            }
+
+            for (var i = 0; i < matches.Count; i++)
+            {
+                // Slightly penalize items with long names
+                matches[i] = (matches[i].item, (int)(matches[i].score + matches[i].item.Name.Length * 0.002f));
+
+                // Penalize weapon mods so the weapon it self will rank higher
+                if (matches[i].item.Types.Contains(ItemType.Mods)) matches[i] = (matches[i].item, matches[i].score + 5);
+            }
+
+            var sortedMatches = matches.OrderBy(match => match.score).ThenBy(match => match.item.Name.Length);
+            return sortedMatches.Select(match => match.item);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Error during item search", ex);
+            return Enumerable.Empty<TarkovDev.GraphQL.Item>();
+        }
     }
 
-    private async void PropertyChangeHandler(object? sender, EventArgs e) {
-        await InvokeAsync(() => StateHasChanged());
-    }
+	    private string SanitizeSearch(string value)
+	    {
+		    value = value.ToLower().Trim();
+		    value = new string(value.Where(c => char.IsLetterOrDigit(c) || c == ' ').ToArray());
+		    return value;
+	    }
 
-    public void Dispose() {
-        MenuVM.PropertyChanged -= PropertyChangeHandler;
+	    private async void SetSearchItem(TarkovDev.GraphQL.Item item)
+	    {
+		    if (item == null) return;
+		    MenuVM.ItemScans.Enqueue(new DefaultItemScan(item));
+		    await _searchBox.Clear();
+	    }
+
+	    private async void OpenWiki()
+	    {
+		    if (MenuVM.LastItem != null)
+		    {
+			    OpenURL(MenuVM.LastItem.WikiLink);
+		    }
+	    }
+
+	    private async void OpenTarkovDev()
+	    {
+		    if (MenuVM.LastItem != null)
+		    {
+			    OpenURL(MenuVM.LastItem.Link);
+		    }
+	    }
+
+	    private void OpenURL(string url)
+	    {
+		    if (string.IsNullOrEmpty(url)) return;
+		    var psi = new ProcessStartInfo
+		    {
+			    FileName = url,
+			    UseShellExecute = true,
+		    };
+		    Process.Start(psi);
+	    }
+
+	    private async void PropertyChangeHandler(object? sender, EventArgs e)
+	    {
+		    await InvokeAsync(() => StateHasChanged());
+	    }
+
+	    public void Dispose()
+	    {
+		    MenuVM.PropertyChanged -= PropertyChangeHandler;
+	    }
+
     }
 
 }

@@ -1,7 +1,8 @@
-﻿using RatScanner.View;
+﻿﻿using RatScanner.View;
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using static RatScanner.RatConfig;
@@ -75,19 +76,25 @@ internal class HotkeyManager {
 		}
 	}
 
-	private void OnNameScanHotkey(object? sender, KeyUpEventArgs e) {
-		Wrap(() => {
-			RatScannerMain.Instance.NameScan(UserActivityHelper.GetMousePosition());
+	private async void OnNameScanHotkey(object? sender, KeyUpEventArgs e) {
+		try {
+			await RatScannerMain.Instance.NameScan(UserActivityHelper.GetMousePosition());
 			if (_last_mouse_click + 500 < DateTimeOffset.Now.ToUnixTimeMilliseconds() && NameScan.EnableAuto) {
-				Thread.Sleep(200);  // wait for double click and ui
-				RatScannerMain.Instance.NameScanScreen();
+				await Task.Delay(200);  // wait for double click and ui
+				await RatScannerMain.Instance.NameScanScreen();
 				_last_mouse_click = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 			}
-		});
+		} catch (Exception ex) {
+			Logger.LogError(ex.Message, ex);
+		}
 	}
 
-	private void OnIconScanHotkey(object? sender, KeyUpEventArgs e) {
-		Wrap(() => RatScannerMain.Instance.IconScan(UserActivityHelper.GetMousePosition()));
+	private async void OnIconScanHotkey(object? sender, KeyUpEventArgs e) {
+		try {
+			await RatScannerMain.Instance.IconScan(UserActivityHelper.GetMousePosition());
+		} catch (Exception ex) {
+			Logger.LogError(ex.Message, ex);
+		}
 	}
 
 	private void OnOpenInteractableOverlayHotkey(object? sender, KeyUpEventArgs e) {

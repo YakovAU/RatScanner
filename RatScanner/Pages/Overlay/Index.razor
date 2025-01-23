@@ -123,13 +123,23 @@
         MenuVM.PropertyChanged += PropertyChangeHandler;
     }
 
+    private bool _isDisposed;
+    
     private async void PropertyChangeHandler(object? sender, EventArgs e)
     {
-        await InvokeAsync(() => StateHasChanged());
+        try {
+            if (!_isDisposed) {
+                await InvokeAsync(() => StateHasChanged());
+            }
+        }
+        catch (TaskCanceledException) {
+            // Ignore task cancellation during shutdown
+        }
     }
 
     public void Dispose()
     {
+        _isDisposed = true;
         MenuVM.PropertyChanged -= PropertyChangeHandler;
     }
 }
